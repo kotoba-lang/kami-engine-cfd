@@ -21,6 +21,12 @@ const W: [f64; 19] = [
 ];
 const OPP: [usize; 19] =
     [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15, 18, 17];
+/// Specular reflection across a y-wall: (ex,ey,ez) → (ex,-ey,ez). Free-slip.
+const REFLECT_Y: [usize; 19] =
+    [0, 1, 2, 4, 3, 5, 6, 9, 10, 7, 8, 11, 12, 13, 14, 18, 17, 16, 15];
+/// Specular reflection across a z-wall: (ex,ey,ez) → (ex,ey,-ez). Free-slip.
+const REFLECT_Z: [usize; 19] =
+    [0, 1, 2, 3, 4, 6, 5, 7, 8, 9, 10, 13, 14, 11, 12, 17, 18, 15, 16];
 
 /// A voxelised 3D body in the wind-tunnel. z is height (ground at z=0), flow +x.
 pub struct Body3 {
@@ -215,10 +221,14 @@ impl Lbm3 {
                             let sx = x as i32 - E[j].0;
                             let sy = y as i32 - E[j].1;
                             let sz = z as i32 - E[j].2;
-                            let val = if sx < 0 || sx >= nx as i32 || sy < 0 || sy >= ny as i32
-                                || sz < 0 || sz >= nz as i32
-                            {
-                                f[n * 19 + OPP[j]]                       // wall bounce-back
+                            let val = if sz < 0 {
+                                f[n * 19 + OPP[j]]                       // ground: no-slip road
+                            } else if sy < 0 || sy >= ny as i32 {
+                                f[n * 19 + REFLECT_Y[j]]                 // sides: free-slip far-field
+                            } else if sz >= nz as i32 {
+                                f[n * 19 + REFLECT_Z[j]]                 // top: free-slip far-field
+                            } else if sx < 0 || sx >= nx as i32 {
+                                f[n * 19 + OPP[j]]                       // x ends: set by inflow/outflow
                             } else {
                                 let sn = ((sz as usize * ny) + sy as usize) * nx + sx as usize;
                                 if solid[sn] { f[n * 19 + OPP[j]] }      // body bounce-back
