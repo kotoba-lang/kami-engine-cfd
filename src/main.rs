@@ -15,16 +15,22 @@ fn main() {
 
     // 3D mode: true vehicle Cd (frontal-area-normalised). 2D mode: sectional.
     if shape == "box3d" || shape == "fastback3d" {
-        let (nx, ny, nz) = (96, 40, 28);
+        // Larger, lower-blockage domain (16% vs the test's 29%), run on the
+        // parallel solver. NOTE: single-relaxation BGK is LAMINAR and stable
+        // only at modest Re (τ must stay clear of 0.5), so the absolute Cd
+        // cannot reach the turbulent automotive value (~0.3 @ Re≈1e6) — that
+        // needs MRT/LES + GPU. The ranking is exact; aero-clj calibrates scale.
+        let (nx, ny, nz) = (100, 56, 36);
         let body = if shape == "fastback3d" {
             Body3::fastback_car(nx, ny, nz, 16, 44, 20, 16)
         } else {
             Body3::box_car(nx, ny, nz, 16, 44, 20, 16)
         };
-        let cd = vehicle_cd(body, re, steps.max(1500));
+        let st = steps.max(1500);
+        let cd = vehicle_cd(body, re, st);
         println!(
             "{{:solver :lbm :dim 3 :shape :{} :re {} :steps {} :vehicle-cd {:.4}}}",
-            shape, re, steps.max(1500), cd
+            shape, re, st, cd
         );
         return;
     }

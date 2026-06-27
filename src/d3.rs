@@ -130,65 +130,107 @@ impl Lbm3 {
         Lbm3 { nx, ny, nz, tau, u0, ftmp: f.clone(), f, body }
     }
 
-    fn macros(&self, n: usize) -> (f64, (f64, f64, f64)) {
-        let (mut rho, mut mx, mut my, mut mz) = (0.0, 0.0, 0.0, 0.0);
-        for i in 0..19 {
-            let fi = self.f[n * 19 + i];
-            rho += fi;
-            mx += fi * E[i].0 as f64;
-            my += fi * E[i].1 as f64;
-            mz += fi * E[i].2 as f64;
-        }
-        if rho <= 0.0 { (1.0, (0.0, 0.0, 0.0)) } else { (rho, (mx / rho, my / rho, mz / rho)) }
+    /// BGK collision — per-cell independent, so split the f buffer across
+    /// threads (std::thread::scope, zero-dep). Makes low-blockage (large)
+    /// domains tractable, which is what a calibrated absolute Cd needs.
+    fn collide_parallel(&mut self) {
+        let ncells = self.nx * self.ny * self.nz;
+        let solid = &self.body.solid;
+        let tau = self.tau;
+        let nthreads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        let per = (ncells + nthreads - 1) / nthreads;
+        std::thread::scope(|s| {
+            for (t, fc) in self.f.chunks_mut(per * 19).enumerate() {
+                let base = t * per;
+                s.spawn(move || {
+                    let cells = fc.len() / 19;
+                    for c in 0..cells {
+                        let n = base + c;
+                        if solid[n] { continue; }
+                        let (mut rho, mut mx, mut my, mut mz) = (0.0, 0.0, 0.0, 0.0);
+                        for i in 0..19 {
+                            let fi = fc[c * 19 + i];
+                            rho += fi;
+                            mx += fi * E[i].0 as f64;
+                            my += fi * E[i].1 as f64;
+                            mz += fi * E[i].2 as f64;
+                        }
+                        let u = if rho <= 0.0 { (0.0, 0.0, 0.0) } else { (mx / rho, my / rho, mz / rho) };
+                        let rho = if rho <= 0.0 { 1.0 } else { rho };
+                        for i in 0..19 {
+                            let fi = fc[c * 19 + i];
+                            fc[c * 19 + i] = fi - (fi - feq(i, rho, u)) / tau;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /// Streaming + drag, PULL form (gather) so it parallelises with no write
+    /// conflicts: each cell writes only its own ftmp, reading upstream f. Wall/
+    /// solid upstream → halfway bounce-back. Drag (momentum exchange) is a
+    /// read-only reduction over fluid-solid links. Returns total x-drag.
+    fn stream_drag_parallel(&mut self) -> f64 {
+        let (nx, ny, nz) = (self.nx, self.ny, self.nz);
+        let solid = &self.body.solid;
+        let f = &self.f;
+        let ncells = nx * ny * nz;
+        let nthreads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        let per = (ncells + nthreads - 1) / nthreads;
+        let drags: Vec<f64> = std::thread::scope(|s| {
+            let handles: Vec<_> = self.ftmp.chunks_mut(per * 19).enumerate().map(|(t, fc)| {
+                let base = t * per;
+                s.spawn(move || {
+                    let cells = fc.len() / 19;
+                    let mut drag = 0.0;
+                    for c in 0..cells {
+                        let n = base + c;
+                        let z = n / (nx * ny);
+                        let y = (n / nx) % ny;
+                        let x = n % nx;
+                        if solid[n] { for j in 0..19 { fc[c * 19 + j] = 0.0; } continue; }
+                        for j in 0..19 {
+                            let sx = x as i32 - E[j].0;
+                            let sy = y as i32 - E[j].1;
+                            let sz = z as i32 - E[j].2;
+                            let val = if sx < 0 || sx >= nx as i32 || sy < 0 || sy >= ny as i32
+                                || sz < 0 || sz >= nz as i32
+                            {
+                                f[n * 19 + OPP[j]]                       // wall bounce-back
+                            } else {
+                                let sn = ((sz as usize * ny) + sy as usize) * nx + sx as usize;
+                                if solid[sn] { f[n * 19 + OPP[j]] }      // body bounce-back
+                                else { f[sn * 19 + j] }                  // pull from upstream
+                            };
+                            fc[c * 19 + j] = val;
+                        }
+                        // momentum exchange on links pointing into the body
+                        for i in 0..19 {
+                            let dx = x as i32 + E[i].0;
+                            let dy = y as i32 + E[i].1;
+                            let dz = z as i32 + E[i].2;
+                            if dx >= 0 && dx < nx as i32 && dy >= 0 && dy < ny as i32
+                                && dz >= 0 && dz < nz as i32
+                            {
+                                let dn = ((dz as usize * ny) + dy as usize) * nx + dx as usize;
+                                if solid[dn] { drag += 2.0 * E[i].0 as f64 * f[n * 19 + i]; }
+                            }
+                        }
+                    }
+                    drag
+                })
+            }).collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        std::mem::swap(&mut self.f, &mut self.ftmp);
+        self.inflow_outflow();
+        drags.iter().sum()
     }
 
     pub fn step(&mut self) -> f64 {
-        let (nx, ny, nz) = (self.nx, self.ny, self.nz);
-        for z in 0..nz {
-            for y in 0..ny {
-                for x in 0..nx {
-                    let n = (z * ny + y) * nx + x;
-                    if self.body.is_solid(x, y, z) { continue; }
-                    let (rho, u) = self.macros(n);
-                    for i in 0..19 {
-                        let fi = self.f[n * 19 + i];
-                        self.f[n * 19 + i] = fi - (fi - feq(i, rho, u)) / self.tau;
-                    }
-                }
-            }
-        }
-        let mut drag = 0.0;
-        for v in self.ftmp.iter_mut() { *v = 0.0; }
-        for z in 0..nz {
-            for y in 0..ny {
-                for x in 0..nx {
-                    let n = (z * ny + y) * nx + x;
-                    if self.body.is_solid(x, y, z) { continue; }
-                    for i in 0..19 {
-                        let xn = x as i32 + E[i].0;
-                        let yn = y as i32 + E[i].1;
-                        let zn = z as i32 + E[i].2;
-                        let fi = self.f[n * 19 + i];
-                        if xn < 0 || xn >= nx as i32 || yn < 0 || yn >= ny as i32
-                            || zn < 0 || zn >= nz as i32
-                        {
-                            self.ftmp[n * 19 + OPP[i]] += fi;
-                            continue;
-                        }
-                        let (xu, yu, zu) = (xn as usize, yn as usize, zn as usize);
-                        if self.body.is_solid(xu, yu, zu) {
-                            self.ftmp[n * 19 + OPP[i]] += fi;
-                            drag += 2.0 * E[i].0 as f64 * fi;
-                        } else {
-                            self.ftmp[((zu * ny + yu) * nx + xu) * 19 + i] += fi;
-                        }
-                    }
-                }
-            }
-        }
-        std::mem::swap(&mut self.f, &mut self.ftmp);
-        self.inflow_outflow();
-        drag
+        self.collide_parallel();
+        self.stream_drag_parallel()
     }
 
     fn inflow_outflow(&mut self) {
