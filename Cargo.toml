@@ -1,0 +1,17 @@
+[package]
+name = "kami-cfd"
+version = "0.1.0"
+edition = "2021"
+description = "Clean-room D2Q9 lattice-Boltzmann CFD — the high-fidelity :lbm backend for the cae-solver aero contract (vs aero-clj's reduced-order :rom-buildup). Computes a 2D sectional drag coefficient by momentum exchange. No external deps."
+license = "Apache-2.0"
+
+[lib]
+name = "kami_cfd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kami-cfd"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
