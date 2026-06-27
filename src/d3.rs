@@ -130,13 +130,19 @@ impl Lbm3 {
         Lbm3 { nx, ny, nz, tau, u0, ftmp: f.clone(), f, body }
     }
 
-    /// BGK collision — per-cell independent, so split the f buffer across
-    /// threads (std::thread::scope, zero-dep). Makes low-blockage (large)
-    /// domains tractable, which is what a calibrated absolute Cd needs.
+    /// BGK collision with a Smagorinsky LES subgrid model — per-cell
+    /// independent, split across threads (std::thread::scope, zero-dep). The
+    /// local strain rate is read from the non-equilibrium momentum-flux tensor
+    /// Q_ab = Σ_i e_ia·e_ib·(f_i−feq_i); a turbulent eddy viscosity
+    /// ν_t = (Cs·Δ)²·S̄ raises τ where the flow is sheared. This keeps τ clear
+    /// of ½ at high Re (stability) AND models subgrid turbulence — the physical
+    /// requirement for the drag to fall toward the real attached-flow value,
+    /// which single-relaxation BGK alone cannot do.
     fn collide_parallel(&mut self) {
         let ncells = self.nx * self.ny * self.nz;
         let solid = &self.body.solid;
-        let tau = self.tau;
+        let tau0 = self.tau;
+        let cs = 0.16; // Smagorinsky constant
         let nthreads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
         let per = (ncells + nthreads - 1) / nthreads;
         std::thread::scope(|s| {
@@ -157,9 +163,24 @@ impl Lbm3 {
                         }
                         let u = if rho <= 0.0 { (0.0, 0.0, 0.0) } else { (mx / rho, my / rho, mz / rho) };
                         let rho = if rho <= 0.0 { 1.0 } else { rho };
+                        // non-equilibrium momentum-flux tensor Q_ab
+                        let (mut qxx, mut qyy, mut qzz, mut qxy, mut qxz, mut qyz) =
+                            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+                        let mut feqs = [0.0f64; 19];
                         for i in 0..19 {
-                            let fi = fc[c * 19 + i];
-                            fc[c * 19 + i] = fi - (fi - feq(i, rho, u)) / tau;
+                            feqs[i] = feq(i, rho, u);
+                            let neq = fc[c * 19 + i] - feqs[i];
+                            let (ex, ey, ez) = (E[i].0 as f64, E[i].1 as f64, E[i].2 as f64);
+                            qxx += ex * ex * neq; qyy += ey * ey * neq; qzz += ez * ez * neq;
+                            qxy += ex * ey * neq; qxz += ex * ez * neq; qyz += ey * ez * neq;
+                        }
+                        let qnorm = (2.0 * (qxx * qxx + qyy * qyy + qzz * qzz)
+                            + 4.0 * (qxy * qxy + qxz * qxz + qyz * qyz)).sqrt();
+                        // total relaxation time incl. Smagorinsky eddy viscosity
+                        let tau_t = 0.5 * ((tau0 * tau0 + 18.0 * 1.4142135623730951 * cs * cs * qnorm / rho).sqrt() - tau0);
+                        let omega = 1.0 / (tau0 + tau_t);
+                        for i in 0..19 {
+                            fc[c * 19 + i] -= omega * (fc[c * 19 + i] - feqs[i]);
                         }
                     }
                 });
