@@ -9,6 +9,11 @@
 //! needs the 3D extension (D3Q19/D3Q27), the same solver in another dimension.
 //!
 //! D2Q9, single-relaxation-time BGK. No external dependencies.
+//!
+//! The 3D extension (`d3`, D3Q19) yields a true vehicle Cd normalised by
+//! frontal area — see [`d3::vehicle_cd`].
+
+pub mod d3;
 
 /// D2Q9 lattice velocities.
 const E: [(i32, i32); 9] = [
