@@ -4,7 +4,8 @@
 //! Emits an EDN-ish line the `:lbm` cae-solver method can read (subprocess /
 //! FFI wiring is the next step; the solver contract slot already exists).
 
-use kami_cfd::d3::{vehicle_cd, Body3};
+use kami_cfd::d3::{vehicle_cd, Body3, Lbm3};
+use kami_cfd::mesh;
 use kami_cfd::{sectional_cd, Body};
 
 fn main() {
@@ -12,6 +13,27 @@ fn main() {
     let shape = args.get(1).map(String::as_str).unwrap_or("block");
     let re: f64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(100.0);
     let steps: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(3000);
+
+    // Real-geometry modes: voxelise a mesh (parametric Ahmed body, or an STL).
+    if shape == "ahmed" || shape == "stl" {
+        let (nx, ny, nz) = (140, 64, 40);
+        let tris = if shape == "stl" {
+            let path = args.get(4).map(String::as_str).unwrap_or("");
+            mesh::parse_stl(&std::fs::read(path).unwrap_or_default())
+        } else {
+            let slant: f64 = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(25.0);
+            mesh::ahmed_body(slant)
+        };
+        let body = Body3::from_triangles(nx, ny, nz, &tris, 48.0, 20.0);
+        let cells = body.frontal_cells;
+        let st = steps.max(1500);
+        let cd = Lbm3::new(body, if re == 100.0 { 3000.0 } else { re }).run(st);
+        println!(
+            "{{:solver :lbm :dim 3 :geom :{} :tris {} :frontal-cells {} :steps {} :vehicle-cd {:.4}}}",
+            shape, tris.len(), cells, st, cd
+        );
+        return;
+    }
 
     // 3D mode: true vehicle Cd (frontal-area-normalised). 2D mode: sectional.
     if shape == "box3d" || shape == "fastback3d" {

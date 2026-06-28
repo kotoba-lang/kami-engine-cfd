@@ -94,10 +94,86 @@ impl Body3 {
         Body3 { nx, ny, nz, solid, frontal_cells }
     }
 
+    /// Voxelise a triangle mesh (REAL geometry, e.g. an STL or ahmed_body) into
+    /// the domain. The mesh is uniformly scaled so its length maps to
+    /// `len_cells`, centred in y, sitting on the ground (z=1). Solid filling is
+    /// per-(y,z)-column ray parity: cast a +x ray through each column, sort the
+    /// surface crossings, fill between entry/exit pairs (watertight meshes).
+    pub fn from_triangles(
+        nx: usize, ny: usize, nz: usize,
+        tris: &[crate::mesh::Tri], len_cells: f64, x0: f64,
+    ) -> Body3 {
+        // mesh bounding box
+        let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+        for t in tris {
+            for v in t {
+                for a in 0..3 {
+                    lo[a] = lo[a].min(v[a]);
+                    hi[a] = hi[a].max(v[a]);
+                }
+            }
+        }
+        let scale = len_cells / (hi[0] - lo[0]).max(1e-9);
+        let ymid = 0.5 * (lo[1] + hi[1]);
+        let tf = |v: [f64; 3]| -> [f64; 3] {
+            [x0 + (v[0] - lo[0]) * scale,
+             ny as f64 / 2.0 + (v[1] - ymid) * scale,
+             1.0 + (v[2] - lo[2]) * scale]
+        };
+        let lt: Vec<crate::mesh::Tri> = tris.iter().map(|t| [tf(t[0]), tf(t[1]), tf(t[2])]).collect();
+        let mut solid = vec![false; nx * ny * nz];
+        for z in 0..nz {
+            for y in 0..ny {
+                let (uc, vc) = (y as f64 + 0.5, z as f64 + 0.5); // column centre (y,z)
+                let mut xs: Vec<f64> = vec![];
+                for t in &lt {
+                    if let Some(x) = ray_x_cross(t, uc, vc) {
+                        xs.push(x);
+                    }
+                }
+                if xs.len() < 2 { continue; }
+                xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                let mut k = 0;
+                while k + 1 < xs.len() {
+                    let a = xs[k].ceil().max(0.0) as i64;
+                    let b = xs[k + 1].floor().min((nx - 1) as f64) as i64;
+                    for x in a..=b {
+                        if x >= 0 && (x as usize) < nx {
+                            solid[(z * ny + y) * nx + x as usize] = true;
+                        }
+                    }
+                    k += 2;
+                }
+            }
+        }
+        let frontal_cells = Self::frontal(nx, ny, nz, &solid);
+        Body3 { nx, ny, nz, solid, frontal_cells }
+    }
+
     #[inline]
     fn is_solid(&self, x: usize, y: usize, z: usize) -> bool {
         self.solid[(z * self.ny + y) * self.nx + x]
     }
+}
+
+/// Intersection x of a +x ray at (y=uc, z=vc) with a triangle, via barycentric
+/// containment in the y-z projection. None if the ray misses or the triangle is
+/// edge-on to the projection.
+fn ray_x_cross(t: &crate::mesh::Tri, uc: f64, vc: f64) -> Option<f64> {
+    let (u0, v0) = (t[0][1], t[0][2]);
+    let (u1, v1) = (t[1][1], t[1][2]);
+    let (u2, v2) = (t[2][1], t[2][2]);
+    let det = (v1 - v2) * (u0 - u2) + (u2 - u1) * (v0 - v2);
+    if det.abs() < 1e-9 {
+        return None;
+    }
+    let a = ((v1 - v2) * (uc - u2) + (u2 - u1) * (vc - v2)) / det;
+    let b = ((v2 - v0) * (uc - u2) + (u0 - u2) * (vc - v2)) / det;
+    let c = 1.0 - a - b;
+    if a < -1e-9 || b < -1e-9 || c < -1e-9 {
+        return None;
+    }
+    Some(a * t[0][0] + b * t[1][0] + c * t[2][0])
 }
 
 pub struct Lbm3 {

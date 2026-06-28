@@ -14,6 +14,7 @@
 //! frontal area — see [`d3::vehicle_cd`].
 
 pub mod d3;
+pub mod mesh;
 
 /// D2Q9 lattice velocities.
 const E: [(i32, i32); 9] = [
