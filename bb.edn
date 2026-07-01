@@ -1,0 +1,5 @@
+{:paths ["src" "test"]
+ :tasks
+ {test:cljc
+  {:doc "Run the pure CLJC CFD contract tests."
+   :task (shell "clojure" "-M:test")}}}
