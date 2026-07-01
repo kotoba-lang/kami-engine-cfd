@@ -1,17 +1,29 @@
 # ADR-0001: kami-cfd — clean-room LBM の設計と、自動車 Cd への校正の旅
 
-- Status: Accepted (2026-06-28)
-- Scope: `kami-cfd`(D2Q9 / D3Q19 lattice-Boltzmann, clean-room, zero external dep)
+- Status: Superseded as in-repo runtime (2026-07-01)
+- Scope: historical `kami-cfd` D2Q9 / D3Q19 lattice-Boltzmann runtime, now represented by CLJC contracts
 - 関連: 90-docs/adr/2606272330(CAE 共有 lib + seed + :lbm backend), aero-clj(:lbm 配線元)
 
 ## 課題
 
 cae-solver の `:lbm` 高忠実度 backend として、Isaac/Cosmos では解けない空力 CFD を
-clean-room・zero-dep の Rust で実装する。reduced-order(aero-clj `:rom-buildup`)が成分
+clean-room・zero-dep の runtime として実装する。reduced-order(aero-clj `:rom-buildup`)が成分
 build-up で Cd を相関するのに対し、こちらは流れ場を格子上で解いて運動量交換で抗力を測る。
 最終目標は自動車 Cd(~0.3, Re≈1e6, 乱流・付着流)。
 
-## 決定（採用したスキームと、その理由＝校正の旅）
+## 現在の決定
+
+この repository は Rust solver runtime を保持しない。`src/kami_engine/cfd/contract.cljc`
+を CFD request/result の authority とし、LBM/RANS/LES/GPU/native/remote solver は
+別 adapter repository が EDN contract に準拠して実装する。
+
+削除済み:
+
+- `Cargo.toml` / `Cargo.lock`
+- `src/*.rs`
+- `tests/*.rs`
+
+## 過去の決定（採用したスキームと、その理由＝校正の旅）
 
 LBM を段階的に成熟させ、実車 Cd との残差の原因を一つずつ除去した。各段は前段の限界が
 動機:
