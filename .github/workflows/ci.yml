@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: cljc contract
+    name: cljc tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
