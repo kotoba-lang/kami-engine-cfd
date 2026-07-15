@@ -1,5 +1,5 @@
 (ns kami-engine.cfd.contract-test
-  (:require [clojure.test :refer [deftest is run-tests testing]]
+  (:require [clojure.test :refer [deftest is testing]]
             [kami-engine.cfd.contract :as cfd]))
 
 (def ahmed-request
@@ -57,11 +57,3 @@
                     :kami.cfd/vehicle-cd 0.27
                     :kami.cfd/status :ok}]
       (is (cfd/lower-drag? fastback squareback)))))
-
-(defn -main [& _]
-  (let [{:keys [fail error]} (run-tests 'kami-engine.cfd.contract-test)
-        failures (+ (or fail 0) (or error 0))]
-    (when (pos? failures)
-      #?(:clj (System/exit 1)
-         :cljs (throw (ex-info "kami-engine CFD contract tests failed"
-                               {:fail fail :error error}))))))

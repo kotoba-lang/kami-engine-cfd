@@ -1,5 +1,5 @@
 {:paths ["src" "test"]
  :tasks
  {test:cljc
-  {:doc "Run the pure CLJC CFD contract tests."
+  {:doc "Run the pure CLJC CFD tests (LBM solver + EDN contract)."
    :task (shell "clojure" "-M:test")}}}

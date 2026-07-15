@@ -65,3 +65,19 @@ LBM を段階的に成熟させ、実車 Cd との残差の原因を一つずつ
 - **BGK 単独で高 Re**: τ→½ で不安定。LES の渦粘性が必須。
 - **TRT**: 高 Re で ω⁻→0 を強制し不安定化。
 - **校正定数の即時撤廃**: 解像度由来の残差は GPU なしでは消えない。明示保持が誠実。
+
+## Addendum (2026-07-16): ソルバーは portable CLJC として repo 内に復元
+
+上記の「現在の決定」（2026-07-01、Rust 削除・CLJC contract のみ保持・solver は
+別 adapter repo が実装）は、実際にはどの adapter repo にも実装されないまま
+solver 自体が未実装の状態で放置されていた。com-junkawasaki/root の
+`.cljc`/`.kotoba` ランタイム優先順位ルール（2026-07-10 改訂、Rust は新規/既存
+問わず降格・`kotoba-lang/mesher`/`pnr`/`rtl`/`ic-packaging` と同じ
+clj-wgsl migration パターン、ADR-2607010930）に従い、削除前の Rust
+（commit `2958ba8`、`755fa13` の親）を git 履歴から復元し、`kami-cfd` /
+`kami-cfd.mesh` / `kami-cfd.d3` として portable `.cljc` に忠実移植した
+（詳細・設計判断はリポジトリ README 参照）。この addendum 以外の本文
+（上記「現在の決定」を含む）は歴史的記録としてそのまま保持し書き換えない —
+solver の実装状況の正本は README。物理設計（D2Q9→D3Q19→LES→free-slip→
+実ジオメトリ voxel 化の校正の旅）はホスト言語が変わっただけで変更なし、
+本 ADR の物理的な内容は今も正確。
