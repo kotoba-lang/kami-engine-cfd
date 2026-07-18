@@ -2,12 +2,12 @@
 
 - Status: Accepted (2026-06-28)
 - Scope: `kami-cfd`(D2Q9 / D3Q19 lattice-Boltzmann, clean-room, zero external dep)
-- 関連: 90-docs/adr/2606272330(CAE 共有 lib + seed + :lbm backend), aero-clj(:lbm 配線元)
+- 関連: 90-docs/adr/2606272330(CAE 共有 lib + seed + :lbm backend), kotoba-lang/aero(:lbm 配線元)
 
 ## 課題
 
 cae-solver の `:lbm` 高忠実度 backend として、Isaac/Cosmos では解けない空力 CFD を
-clean-room・zero-dep の Rust で実装する。reduced-order(aero-clj `:rom-buildup`)が成分
+clean-room・zero-dep の Rust で実装する。reduced-order(kotoba-lang/aero `:rom-buildup`)が成分
 build-up で Cd を相関するのに対し、こちらは流れ場を格子上で解いて運動量交換で抗力を測る。
 最終目標は自動車 Cd(~0.3, Re≈1e6, 乱流・付着流)。
 
@@ -34,7 +34,7 @@ LBM を段階的に成熟させ、実車 Cd との残差の原因を一つずつ
 
 - **検証**: Ahmed body(自動車 CFD の標準ブラフ体)を voxel 化。25° スラントは squareback より
   低抗力(ランキング正)。校正後 **~0.22 vs 実験 ~0.29(±25%)** = 認知された実測地形に乗った。
-- **校正定数**(aero-clj): 残差(生値 ~1.8 vs ~0.3)の原因のうち **物理(LES)・境界(free-slip)・
+- **校正定数**(kotoba-lang/aero): 残差(生値 ~1.8 vs ~0.3)の原因のうち **物理(LES)・境界(free-slip)・
   ジオメトリ(mesh)は解決**。残るは **グリッド解像度のみ**。よって校正定数は「精度不足」ではなく
   「粗格子の既知スケール差」を吸収するものとして**明示・文書化して保持**する。
 - clean-room 不変条件(NVIDIA 等の外部コード非リンク)維持。zero external dep。
