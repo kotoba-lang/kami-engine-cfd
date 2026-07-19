@@ -112,14 +112,36 @@
       (dotimes [i 9] (aset ^doubles f (+ (* n 9) i) (double (feq i 1.0 u0 0.0)))))
     {:nx nx :ny ny :tau tau :u0 u0 :f f :ftmp (aclone f) :body body}))
 
-(defn- macros
-  "[rho ux uy] at cell `n`."
+(defn macros
+  "[rho ux uy] at cell index `n`. Public so consumers can probe the flow
+  field (density, velocity) at any cell — e.g. kotoba.biomech.hemodynamics
+  reading back a velocity probe without re-implementing the moment sum."
   [f n]
   (loop [i 0 rho 0.0 mx 0.0 my 0.0]
     (if (< i 9)
       (let [fi (aget ^doubles f (+ (* n 9) i))]
         (recur (inc i) (+ rho fi) (+ mx (* fi (aget ^ints ex i))) (+ my (* fi (aget ^ints ey i)))))
       (if (<= rho 0.0) [1.0 0.0 0.0] [rho (/ mx rho) (/ my rho)]))))
+
+(defn cell-at
+  "[rho ux uy] at lattice position (x, y), or nil if (x, y) is solid or
+  out of range. A thin (x, y) wrapper over `macros`."
+  [lbm x y]
+  (let [{:keys [nx ny f body]} lbm]
+    (when (and (<= 0 x) (< x nx) (<= 0 y) (< y ny)
+               (not (solid-at? body x y)))
+      (macros f (+ (* y nx) x)))))
+
+(defn velocity-at
+  "[ux uy] at lattice position (x, y), or nil if the cell is solid / out of
+  range. Use to read back a flow probe after stepping."
+  [lbm x y]
+  (some-> (cell-at lbm x y) rest vec))
+
+(defn density-at
+  "Density rho at lattice position (x, y), or nil if solid / out of range."
+  [lbm x y]
+  (first (cell-at lbm x y)))
 
 (defn- apply-boundaries!
   "Left inflow (equilibrium at u0), right outflow (zero-gradient). Mutates

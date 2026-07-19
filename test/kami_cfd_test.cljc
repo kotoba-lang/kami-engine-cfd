@@ -149,3 +149,23 @@
       (let [tris (mesh/parse-stl (vec b))]
         (is (= 1 (count tris)))
         (is (= [1.0 0.0 0.0] (second (first tris))))))))
+
+(deftest velocity-and-density-probes-test
+  (testing "velocity-at / density-at return finite values at a fluid cell"
+    (let [body (cfd/block 120 40 30 8 12)
+          lbm  (loop [s 0 l (cfd/lbm-new body 100.0)]
+                 (if (>= s 30) l (recur (inc s) (first (cfd/step l)))))
+          ;; probe upstream of the obstacle, mid-channel (a fluid cell)
+          v   (cfd/velocity-at lbm 10 20)
+          rho (cfd/density-at lbm 10 20)]
+      (is (some? v))
+      (is (number? (first v)))
+      (is (number? (second v)))
+      (is (number? rho))))
+  (testing "probes return nil on a solid cell and out-of-range"
+    (let [body (cfd/block 120 40 30 8 12)
+          lbm  (cfd/lbm-new body 100.0)]
+      ;; obstacle centre is solid (block x in [30,38], y in [14,26])
+      (is (nil? (cfd/velocity-at lbm 34 20)))
+      ;; out of range
+      (is (nil? (cfd/velocity-at lbm 999 999))))))
