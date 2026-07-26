@@ -45,6 +45,10 @@
   mapping are wrong and every enclosure number this namespace produces is
   meaningless. Run it before trusting anything else.
 
+  **Regime limit — see `reachable-reynolds` below before using this on an
+  enclosure.** This is a laminar-to-moderate-Re tool; a fan-cooled computer
+  case is Re ~2e4 and out of reach on any grid affordable single-threaded.
+
   **What this namespace does NOT compute.** Flow only — velocity, volumetric
   flux, stagnant-region fraction. It carries no energy equation, so it cannot
   give component temperatures. The one temperature it does give,
@@ -90,8 +94,18 @@
   `face` is one of :x-min :x-max :y-min :y-max :z-min :z-max.
   `in?` is `(fn [a b] boolean)` over the two in-plane cell coordinates, in
   the order (y,z) for x faces, (x,z) for y faces, (x,y) for z faces.
-  `kind` is :inlet or :outlet. `u` is the inlet speed in lattice units
-  (ignored for :outlet), directed into the domain."
+  `kind` is :inlet or :outlet. `u` is the prescribed speed in lattice units
+  (ignored for :outlet), directed **along the inward normal** — so a
+  **negative `u` is a suction patch**: a fan pulling air out through this face.
+  That is the correct way to model a blower-cooled enclosure: the blower is
+  the mover, so prescribe velocity where the blower is and leave the intake
+  vent a passive :outlet (zero-gradient, i.e. open to ambient).
+
+  **Prescribing velocity on the passive vent instead is not equivalent** and
+  will over-constrain mass: a large velocity inlet feeding a small
+  zero-gradient outlet cannot conserve mass, so the domain pressurises, the
+  outlet flux collapses toward zero and nearly every cell reads as stagnant.
+  If inlet and outlet fluxes do not balance, suspect this first."
   [face kind in? u]
   {:face face :kind kind :in? in? :u u})
 
@@ -322,6 +336,87 @@
                       (recur (inc y) fl' dd'))))]
           (recur (inc z) f' d'))))))
 
+
+;; ---------------------------------------------------------------------------
+;; Convergence-based stopping (2026-07-27).
+;;
+;; `run` takes a fixed step count, which is an arbitrary number chosen by the
+;; caller. A field that has NOT reached steady state looks exactly like one
+;; that has — same shape, same probe functions, no complaint. That is the same
+;; class of quiet-wrongness as a boolean feature that no-ops: the result is
+;; returned with full confidence and nothing says it is unfinished.
+;;
+;; `run-until-steady` iterates until the largest per-cell velocity change
+;; between successive steps falls below `tol`, and REPORTS which happened:
+;; `:converged` with the step count, or `:max-steps` with theremaining residual. The
+;; caller can then refuse to publish a non-converged number instead of
+;; publishing it unknowingly.
+;;
+;; Cost note: the residual needs the velocity field twice, so a checked step is
+;; more expensive than a bare one. `check-every` amortises that — the residual
+;; is only evaluated every Nth step, and the reported residual is the last one
+;; measured.
+;; ---------------------------------------------------------------------------
+
+(defn- velocity-snapshot
+  "Flat array of (ux,uy,uz) for every cell — solid cells contribute zeros."
+  [lbm]
+  (let [{:keys [nx ny nz]} lbm
+        n (* nx ny nz)
+        out (double-array (* n 3))]
+    (dotimes [i n]
+      (let [nxy (* nx ny)
+            z (quot i nxy) y (mod (quot i nx) ny) x (mod i nx)
+            [_ ux uy uz] (cell-macros lbm x y z)]
+        (aset ^doubles out (* i 3) (double ux))
+        (aset ^doubles out (+ (* i 3) 1) (double uy))
+        (aset ^doubles out (+ (* i 3) 2) (double uz))))
+    out))
+
+(defn- max-abs-diff [^doubles a ^doubles b]
+  (let [n (alength a)]
+    (loop [i 0 m 0.0]
+      (if (= i n) m
+          (recur (inc i) (max m (Math/abs (- (aget a i) (aget b i)))))))))
+
+(defn run-until-steady
+  "Iterate until steady, or until `max-steps`. Returns
+  `{:lbm :status :steps :residual :tol}` where `:status` is `:converged` or
+  `:max-steps`.
+
+  Give the criterion as **`:rel-tol`, a fraction of `u0`** — that is the only
+  form that means anything physically, and it is the recommended option.
+  `:tol` (absolute, lattice units) is still accepted but is easy to get badly
+  wrong: with u0 = 0.05, an innocent-looking `:tol 1e-7` is 2e-6 of the flow
+  scale and will run essentially forever on any real domain. `:rel-tol` is
+  scaled by u0 for you; 1e-4 is a reasonable engineering criterion, 1e-5 is
+  strict. If both are given, `:rel-tol` wins.
+
+  A `:max-steps` result is not a failure to be ignored: it means the reported
+  field is still evolving and any flux read off it is provisional. The returned
+  map always carries `:tol` (the absolute value actually used) and
+  `:rel-tol-used` so the criterion is never implicit."
+  ([lbm] (run-until-steady lbm {}))
+  ([lbm {:keys [tol rel-tol max-steps check-every]}]
+   (let [rel (when rel-tol (double rel-tol))
+         tol (double (cond rel (* rel (:u0 lbm))
+                           tol tol
+                           :else (* 1.0e-4 (:u0 lbm))))
+         max-steps (long (or max-steps 20000))
+         check-every (long (or check-every 50))]
+     (loop [s 0 l lbm prev (velocity-snapshot lbm) resid ##Inf]
+       (if (>= s max-steps)
+         {:lbm l :status :max-steps :steps s :residual resid :tol tol
+          :rel-tol-used (when rel rel)}
+         (let [l' (reduce (fn [acc _] (step acc)) l (range check-every))
+               s' (+ s check-every)
+               cur (velocity-snapshot l')
+               r (max-abs-diff cur prev)]
+           (if (<= r tol)
+             {:lbm l' :status :converged :steps s' :residual r :tol tol
+              :rel-tol-used (when rel rel)}
+             (recur s' l' cur r))))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Validation: force-driven plane Poiseuille flow
 ;; ---------------------------------------------------------------------------
@@ -381,6 +476,64 @@
       :profile-exact exact
       :ny ny :steps steps :tol tol
       :pass? (<= l2 tol)})))
+
+
+;; ---------------------------------------------------------------------------
+;; Reynolds-number reachability — read this before using it on an enclosure.
+;;
+;; This solver is a **laminar-to-moderate-Re internal flow** tool. On a grid
+;; you can afford single-threaded, it cannot reach the Reynolds number of a
+;; fan-cooled computer enclosure, and the arithmetic is not close:
+;;
+;;   MK-1 enclosure, 6 mm cells (measured 2026-07-27):
+;;     lattice   Re = u0*L/nu = 0.05*31/0.02       =     78
+;;     physical  Re = 3 m/s * 0.093 m / 1.5e-5     = 18,400
+;;   To match at u0=0.05 on 31 cells you would need nu = 8.4e-5, i.e.
+;;   tau = 0.50025 — LBM loses stability as tau -> 0.5 — and the diffusive
+;;   settling time L^2/nu = 1.1e7 steps, about 26 days at this throughput.
+;;
+;; So do not point this at an enclosure and read the flux as an answer. Two
+;; honest uses remain: (1) verification and method development, where the
+;; Poiseuille case gives a closed-form check; (2) genuinely low-Re internal
+;; flow (fine channels, cold plates, creeping flow).
+;;
+;; For turbulent enclosure/vehicle airflow, route to a solver built for it —
+;; `kotoba-lang/kami-engine-cae-solver` already carries OpenFOAM evidence
+;; runners. Choosing the wrong solver and reporting its number confidently is
+;; a worse failure than not having a number.
+;;
+;; `reachable-reynolds` below makes the envelope computable instead of
+;; folklore, so a caller can check before spending an hour.
+;; ---------------------------------------------------------------------------
+
+(defn reynolds
+  "Lattice Reynolds number u0*L/nu for a characteristic length `l-cells`."
+  [lbm l-cells]
+  (/ (* (:u0 lbm) (double l-cells)) (:nu lbm)))
+
+(defn reachable-reynolds
+  "Given a characteristic length in cells, report the Re envelope this
+  substrate can actually deliver, and what a target Re would cost.
+
+  Returns `{:re-current :re-max-stable :nu-for-target :tau-for-target
+  :settling-steps-for-target :feasible?}`. `:feasible?` is false when the
+  target needs tau within `tau-margin` of 0.5 (unstable) or more than
+  `step-budget` settling steps — i.e. when the honest answer is to use a
+  different solver."
+  ([lbm l-cells target-re] (reachable-reynolds lbm l-cells target-re 0.01 1000000))
+  ([lbm l-cells target-re tau-margin step-budget]
+   (let [l (double l-cells)
+         nu-min (/ tau-margin 3.0)                 ; tau = 0.5 + 3nu
+         re-max (/ (* 0.1 l) nu-min)               ; u0 <= ~0.1 for stability
+         nu-t (/ (* (:u0 lbm) l) (double target-re))
+         tau-t (+ 0.5 (* 3.0 nu-t))
+         settle (/ (* l l) nu-t)]
+     {:re-current (reynolds lbm l-cells)
+      :re-max-stable re-max
+      :nu-for-target nu-t
+      :tau-for-target tau-t
+      :settling-steps-for-target settle
+      :feasible? (and (> tau-t (+ 0.5 tau-margin)) (<= settle step-budget))})))
 
 ;; ---------------------------------------------------------------------------
 ;; Engineering conversions — lattice units are not millimetres
