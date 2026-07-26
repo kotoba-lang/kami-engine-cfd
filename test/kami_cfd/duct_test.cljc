@@ -102,3 +102,41 @@
       (let [dt (duct/bulk-delta-t 334.0 q-m3s)]
         (is (pos? dt))
         (is (= ##Inf (duct/bulk-delta-t 334.0 0.0)) "no flow = unbounded rise")))))
+
+(deftest run-until-steady-reports-which-happened
+  (testing "a small duct converges and says so"
+    (let [d (duct/domain 6 6 14 (fn [_ _ _] false))
+          r (duct/run-until-steady
+             (duct/duct-new d {:nu 0.05 :u0 0.05
+                               :patches [(duct/full-face :z-min :inlet 0.05)
+                                         (duct/full-face :z-max :outlet nil)]})
+             {:tol 1.0e-7 :max-steps 8000 :check-every 50})]
+      (println "  run-until-steady:" (:status r) "steps" (:steps r) "residual" (:residual r))
+      (is (= :converged (:status r)))
+      (is (<= (:residual r) (:tol r)))
+      (is (pos? (:steps r)))))
+  (testing "an impossible tolerance reports :max-steps, not silence"
+    (let [d (duct/domain 6 6 14 (fn [_ _ _] false))
+          r (duct/run-until-steady
+             (duct/duct-new d {:nu 0.05 :u0 0.05
+                               :patches [(duct/full-face :z-min :inlet 0.05)
+                                         (duct/full-face :z-max :outlet nil)]})
+             {:tol 1.0e-30 :max-steps 200 :check-every 50})]
+      (is (= :max-steps (:status r)))
+      (is (> (:residual r) (:tol r))
+          "a non-converged run must expose its residual so the caller can refuse it"))))
+
+(deftest reynolds-envelope-refuses-an-out-of-regime-target
+  (testing "the MK-1 enclosure case is correctly reported as infeasible"
+    (let [d (duct/domain 6 6 10 (fn [_ _ _] false))
+          lbm (duct/duct-new d {:nu 0.02 :u0 0.05 :patches []})
+          env (duct/reachable-reynolds lbm 31 18400)]
+      (println "  Re envelope:" (select-keys env [:re-current :tau-for-target
+                                                 :settling-steps-for-target :feasible?]))
+      (is (< 70.0 (:re-current env) 85.0) "lattice Re ~78 at these settings")
+      (is (false? (:feasible? env))
+          "Re 18400 needs tau ~0.5003 and ~1e7 settling steps — must be refused")))
+  (testing "a genuinely low-Re target is feasible"
+    (let [d (duct/domain 6 6 10 (fn [_ _ _] false))
+          lbm (duct/duct-new d {:nu 0.02 :u0 0.05 :patches []})]
+      (is (true? (:feasible? (duct/reachable-reynolds lbm 31 100)))))))
