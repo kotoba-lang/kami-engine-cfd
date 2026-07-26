@@ -30,7 +30,8 @@
   `Vec<f64>`/`Vec<bool>` buffers directly and is a deliberate choice:
   collide/stream touches every cell every step across thousands of steps,
   and persistent-vector copies would make that O(cells) per step instead of
-  O(1). `aget`/`aset`/`double-array`/`boolean-array`/`int-array` are portable
+  O(1). `aget`/`aset`/`double-array`/`int-array` are portable
+  (`boolean-array` is NOT — see `bool-array` below)
   across JVM Clojure, ClojureScript, and nbb. `Lbm`/`Body` values are plain
   immutable maps threading these mutable buffers through — 'swapping
   f/ftmp' (as the Rust `std::mem::swap` did) is a cheap `assoc` of array
@@ -39,6 +40,31 @@
 ;; ---------------------------------------------------------------------------
 ;; D2Q9 lattice constants
 ;; ---------------------------------------------------------------------------
+
+
+;; ---------------------------------------------------------------------------
+;; Portable boolean array (2026-07-27 portability fix).
+;;
+;; `boolean-array` is a JVM-only Clojure primitive — cljs.core has
+;; `int-array`/`double-array`/`object-array` but NO `boolean-array`. Both this
+;; repo's solvers used it for the solid mask, so **neither actually loaded on
+;; ClojureScript/nbb**, despite the docstrings and README claiming JVM/cljs/nbb
+;; portability. The claim was never exercised because the only runner was the
+;; JVM `.clj` CLI and JVM tests.
+;;
+;; A `js/Uint8Array` would be the obvious cljs substitute and is WRONG here:
+;; in ClojureScript `0` is truthy, so `(if (aget solid n) ...)` would treat
+;; every empty cell as solid and the whole domain would silently become a
+;; block of metal. A real JS array filled with `false` keeps the truthiness
+;; semantics the solver relies on.
+;; ---------------------------------------------------------------------------
+
+(defn bool-array
+  "`n`-element mutable boolean array, `false`-filled, portable across JVM and
+  ClojureScript. See the note above for why Uint8Array is not usable."
+  [n]
+  #?(:clj (boolean-array (long n) false)
+     :cljs (.fill (js/Array. n) false)))
 
 (def ^:private ex (int-array [0 1 0 -1 0 1 -1 -1 1]))
 (def ^:private ey (int-array [0 0 1 0 -1 1 1 -1 -1]))
@@ -65,7 +91,7 @@
   "A rectangular block of width `w`, height `h`, leading edge at `x0`,
   vertically centred — the bluff/squareback reference."
   [nx ny x0 w h]
-  (let [solid (boolean-array (* nx ny) false)
+  (let [solid (bool-array (* nx ny))
         y0 (quot (- ny h) 2)
         x-hi (min (+ x0 w) nx)
         y-hi (min (+ y0 h) ny)]
@@ -77,7 +103,7 @@
   "A tapered teardrop of the same frontal height `h`, length `len`, tail
   shrinking linearly to a point — the streamlined reference."
   [nx ny x0 len h]
-  (let [solid (boolean-array (* nx ny) false)
+  (let [solid (bool-array (* nx ny))
         cy (quot ny 2)]
     (loop [k 0]
       (when (< k len)

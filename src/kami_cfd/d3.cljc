@@ -31,7 +31,7 @@
 ;; this namespace runs unmodified on the JVM and in ClojureScript/nbb).
 ;; ---------------------------------------------------------------------------
 
-(defn- sqrt* [x]
+(defn sqrt* [x]
   #?(:clj (Math/sqrt (double x))
      :cljs (js/Math.sqrt x)))
 
@@ -51,26 +51,70 @@
   #?(:clj (Math/floor (double x))
      :cljs (js/Math.floor x)))
 
+
+;; ---------------------------------------------------------------------------
+;; Portable boolean array (2026-07-27 portability fix).
+;;
+;; `boolean-array` is a JVM-only Clojure primitive — cljs.core has
+;; `int-array`/`double-array`/`object-array` but NO `boolean-array`. Both this
+;; repo's solvers used it for the solid mask, so **neither actually loaded on
+;; ClojureScript/nbb**, despite the docstrings and README claiming JVM/cljs/nbb
+;; portability. The claim was never exercised because the only runner was the
+;; JVM `.clj` CLI and JVM tests.
+;;
+;; A `js/Uint8Array` would be the obvious cljs substitute and is WRONG here:
+;; in ClojureScript `0` is truthy, so `(if (aget solid n) ...)` would treat
+;; every empty cell as solid and the whole domain would silently become a
+;; block of metal. A real JS array filled with `false` keeps the truthiness
+;; semantics the solver relies on.
+;; ---------------------------------------------------------------------------
+
+(defn bool-array
+  "`n`-element mutable boolean array, `false`-filled, portable across JVM and
+  ClojureScript. See the note above for why Uint8Array is not usable."
+  [n]
+  #?(:clj (boolean-array (long n) false)
+     :cljs (.fill (js/Array. n) false)))
+
+;; ---------------------------------------------------------------------------
+;; PUBLIC D3Q19 kernel surface (2026-07-27).
+;;
+;; The lattice constants, `feq` and `collide!` were `^:private` because the
+;; only consumer was this namespace's own vehicle/far-field boundary scheme
+;; (`stream-drag!` hardcodes: z<0 no-slip road, y sides free-slip, z top
+;; free-slip, x ends inflow/outflow). Internal flows — an enclosure, a duct,
+;; a cold plate — need the SAME collision kernel with DIFFERENT boundaries.
+;;
+;; Duplicating a 19-velocity lattice into a sibling namespace would create two
+;; sources of truth for `ex/ey/ez/opp/w`, and a transcription slip there is
+;; silent (the solver still runs, it just conserves the wrong thing). So the
+;; kernel is exposed instead: `kami-cfd.duct` reuses these and supplies its
+;; own streaming/boundary pass. Collision is boundary-agnostic by
+;; construction — it is per-cell and reads no neighbour — so sharing it is
+;; safe. Nothing about the vehicle path changed.
+;; ---------------------------------------------------------------------------
 ;; ---------------------------------------------------------------------------
 ;; D3Q19 lattice constants
 ;; ---------------------------------------------------------------------------
 
-(def ^:private ex (int-array [0  1 -1  0  0  0  0  1 -1  1 -1  1 -1  1 -1  0  0  0  0]))
-(def ^:private ey (int-array [0  0  0  1 -1  0  0  1 -1 -1  1  0  0  0  0  1 -1  1 -1]))
-(def ^:private ez (int-array [0  0  0  0  0  1 -1  0  0  0  0  1 -1 -1  1  1 -1 -1  1]))
-(def ^:private w (double-array [(/ 1.0 3.0)
+(def ex (int-array [0  1 -1  0  0  0  0  1 -1  1 -1  1 -1  1 -1  0  0  0  0]))
+(def ey (int-array [0  0  0  1 -1  0  0  1 -1 -1  1  0  0  0  0  1 -1  1 -1]))
+(def ez (int-array [0  0  0  0  0  1 -1  0  0  0  0  1 -1 -1  1  1 -1 -1  1]))
+(def w (double-array [(/ 1.0 3.0)
                                  (/ 1.0 18.0) (/ 1.0 18.0) (/ 1.0 18.0) (/ 1.0 18.0) (/ 1.0 18.0) (/ 1.0 18.0)
                                  (/ 1.0 36.0) (/ 1.0 36.0) (/ 1.0 36.0) (/ 1.0 36.0)
                                  (/ 1.0 36.0) (/ 1.0 36.0) (/ 1.0 36.0) (/ 1.0 36.0)
                                  (/ 1.0 36.0) (/ 1.0 36.0) (/ 1.0 36.0) (/ 1.0 36.0)]))
 ;; Opposite-direction index, for bounce-back.
-(def ^:private opp (int-array [0 2 1 4 3 6 5 8 7 10 9 12 11 14 13 16 15 18 17]))
+(def opp (int-array [0 2 1 4 3 6 5 8 7 10 9 12 11 14 13 16 15 18 17]))
 ;; Specular reflection across a y-wall: (ex,ey,ez) -> (ex,-ey,ez). Free-slip.
-(def ^:private reflect-y (int-array [0 1 2 4 3 5 6 9 10 7 8 11 12 13 14 18 17 16 15]))
+(def reflect-y (int-array [0 1 2 4 3 5 6 9 10 7 8 11 12 13 14 18 17 16 15]))
 ;; Specular reflection across a z-wall: (ex,ey,ez) -> (ex,ey,-ez). Free-slip.
-(def ^:private reflect-z (int-array [0 1 2 3 4 6 5 7 8 9 10 13 14 11 12 17 18 15 16]))
+(def reflect-z (int-array [0 1 2 3 4 6 5 7 8 9 10 13 14 11 12 17 18 15 16]))
 
-(defn- feq [i rho ux uy uz]
+(defn feq
+  "D3Q19 equilibrium distribution. Public: shared with kami-cfd.duct."
+  [i rho ux uy uz]
   (let [exi (aget ^ints ex i) eyi (aget ^ints ey i) ezi (aget ^ints ez i)
         eu (+ (* exi ux) (* eyi uy) (* ezi uz))
         usq (+ (* ux ux) (* uy uy) (* uz uz))]
@@ -102,7 +146,7 @@
 (defn box-car
   "A squareback box car: full-height block, leading edge at `x0`."
   [nx ny nz x0 len w h]
-  (let [solid (boolean-array (* nx ny nz) false)
+  (let [solid (bool-array (* nx ny nz))
         y0 (quot (- ny w) 2)
         x-hi (min (+ x0 len) nx)
         y-hi (min (+ y0 w) ny)
@@ -115,7 +159,7 @@
   "Same frontal face as `box-car`, but the roof tapers down over the rear
   half (fastback) — lower drag at equal frontal area."
   [nx ny nz x0 len w h]
-  (let [solid (boolean-array (* nx ny nz) false)
+  (let [solid (bool-array (* nx ny nz))
         y0 (quot (- ny w) 2)
         half (quot len 2)
         y-hi (min (+ y0 w) ny)]
@@ -173,7 +217,7 @@
               (+ (/ ny 2.0) (* (- vy ymid) scale))
               (+ 1.0 (* (- vz lo2) scale))])
         lt (mapv (fn [[a b c]] [(tf a) (tf b) (tf c)]) tris)
-        solid (boolean-array (* nx ny nz) false)]
+        solid (bool-array (* nx ny nz))]
     (dotimes [z nz]
       (dotimes [y ny]
         (let [uc (+ y 0.5) vc (+ z 0.5)
@@ -207,7 +251,7 @@
       (dotimes [i 19] (aset ^doubles f (+ (* n 19) i) (double (feq i 1.0 u0 0.0 0.0)))))
     {:nx nx :ny ny :nz nz :tau tau :u0 u0 :f f :ftmp (aclone f) :body body}))
 
-(defn- collide!
+(defn collide!
   "BGK collision with a Smagorinsky LES subgrid model — per-cell independent
   (originally split across threads via `std::thread::scope`; see namespace
   docstring for why this port runs it sequentially instead). The local
