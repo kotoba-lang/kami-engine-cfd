@@ -13,7 +13,7 @@ build-up で Cd を相関するのに対し、こちらは流れ場を格子上�
 
 ## 現在の決定
 
-この repository は Rust solver runtime を保持しない。`src/kami_engine/cfd/contract.cljc`
+この repository は Rust solver runtime を保持しない。`src/kami_engine/cfd/contract.cljk`
 を CFD request/result の authority とし、LBM/RANS/LES/GPU/native/remote solver は
 別 adapter repository が EDN contract に準拠して実装する。
 
