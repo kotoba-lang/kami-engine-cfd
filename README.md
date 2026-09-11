@@ -113,7 +113,7 @@ Interpreted JVM Clojure without hand-unrolled/AOT numeric code is roughly
 1-2 orders of magnitude slower per lattice-cell-step than native Rust.
 Running every original test unchanged (some simulate hundreds of thousands
 of cells for 1000-3000 steps — billions of inner-loop iterations) would
-make a single `clojure -M:test` run take on the order of an hour.
+make a single `kbb -M:test` run take on the order of an hour.
 `test/kami_cfd_test.cljk` ports all 8 original tests with the same physical
 assertions, but:
 
@@ -147,7 +147,7 @@ demonstrate it.
 ## Verify
 
 ```bash
-clojure -M:test
+kbb -M:test
 ```
 
 `Ran 11 tests containing 25 assertions. 0 failures, 0 errors.` — 8 tests /
@@ -155,7 +155,7 @@ clojure -M:test
 plus the pre-existing 3 tests / 11 assertions from
 `kami-engine.cfd.contract-test` (unmodified except for a dead `-main`
 removal now that `deps.edn` uses the shared `cognitect.test-runner`
-alias — see below). `bb test:cljc` runs the same suite via babashka as a
+alias — see below). `kbb -M:test:cljc` runs the same suite via babashka as a
 smoke check.
 
 ## Repo layout

@@ -6,7 +6,7 @@
   a smoke test. If it fails, the bounce-back walls or the tau<->nu mapping are
   wrong and every enclosure number the namespace produces is meaningless.
 
-  Runtime note. These run on the JVM (`clojure -M:test`), matching this repo's
+  Runtime note. These run on the JVM (`kbb -M:test`), matching this repo's
   existing `kami-cfd.runner` host-runner pattern. The namespace itself is
   portable `.cljc` and loads on nbb, but nbb executes via SCI (an
   interpreter), so a tight 19-velocity lattice loop is orders of magnitude
