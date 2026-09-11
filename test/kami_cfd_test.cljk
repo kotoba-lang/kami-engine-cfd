@@ -12,7 +12,7 @@
   1-2 orders of magnitude slower per lattice-cell-step than native Rust, so
   running the original tests unchanged (some of which simulate hundreds of
   thousands of cells for 1000-3000 steps, i.e. billions of inner-loop
-  iterations) would make a single `clojure -M:test` run take tens of
+  iterations) would make a single `kbb -M:test` run take tens of
   minutes. The 2D tests keep their original 240x80 grid and only cut step
   counts by roughly half (steady-state wake structure is already resolved
   well before then, and the assertions here are ORDER comparisons, not

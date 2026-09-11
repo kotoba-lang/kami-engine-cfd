@@ -1,6 +1,6 @@
 (ns kami-cfd.runner
   "kami-cfd CLI — compute the sectional/vehicle Cd of a built-in body
-  profile. JVM-only (`clojure -X:cli` / `clojure -M -m kami-cfd.runner`),
+  profile. JVM-only (`kbb -X:cli` / `kbb -M -m kami-cfd.runner`),
   mirroring the conservative host-side runner pattern used by
   `kotoba-lang/plm`'s `src/kotoba/plm/runner.clj` — a thin argv-driven
   entry point over the portable `.cljc` solver namespaces (`kami-cfd`,
@@ -8,7 +8,7 @@
   original Rust `src/main.rs` (70 lines); nice-to-have per the migration
   plan, not required — see this repo's README.
 
-  Usage: `clojure -M -m kami-cfd.runner [block|teardrop|box3d|fastback3d|ahmed|stl] [re] [steps] [extra]`
+  Usage: `kbb -M -m kami-cfd.runner [block|teardrop|box3d|fastback3d|ahmed|stl] [re] [steps] [extra]`
   Emits an EDN line the `:lbm` cae-solver method (or a human) can read."
   (:require [clojure.java.io :as io]
             [kami-cfd :as cfd]
