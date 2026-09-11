@@ -23,7 +23,7 @@ wrinkle worth being explicit about:
 - **2026-07-01** (commit `755fa13`, "Remove Rust runtime from CFD
   contract"): the Rust source (`Cargo.toml`, `src/*.rs`, `tests/*.rs`) was
   deleted and replaced with an EDN-contract-only design —
-  `src/kami_engine/cfd/contract.cljc` (request/result *shape* validators,
+  `src/kami_engine/cfd/contract.cljk` (request/result *shape* validators,
   see below) — with a stated intent that "LBM/RANS/LES/GPU/native/remote
   solvers live in separate adapter repositories." **No adapter repository
   implementing the actual solver math was ever built.** The Rust removal
@@ -34,7 +34,7 @@ wrinkle worth being explicit about:
   of `755fa13`) and ports it faithfully to portable `.cljc`, completing
   what the 2026-07-01 commit should have done under the repo's actual
   runtime policy: the Rust gets demoted, but the solver itself is *ported*,
-  not left unimplemented. `src/kami_engine/cfd/contract.cljc` is
+  not left unimplemented. `src/kami_engine/cfd/contract.cljk` is
   unrelated/complementary and is left as-is — it validates request/result
   EDN *shapes*; the namespaces below compute the actual physics those
   shapes describe. `docs/adr/0001-lbm-solver.md` is kept (with a short
@@ -49,7 +49,7 @@ wrinkle worth being explicit about:
 | `kami-cfd.mesh` | `src/mesh.rs` (65) | 65 -> 136 | Binary STL triangle-soup parser (`parse-stl`, portable pure-arithmetic little-endian decoder) + Ahmed-body bluff-body generator (`ahmed-body`) |
 | `kami-cfd.d3` | `src/d3.rs` (376) | 376 -> 335 | D3Q19 (3D, 19-velocity) LBM + Smagorinsky LES subgrid turbulence + free-slip far-field / no-slip road boundaries; `box-car`/`fastback-car`/`from-triangles` bodies, `vehicle-cd` |
 | `kami-cfd.runner` (`.clj`, JVM-only) | `src/main.rs` (70) | 70 -> 69 | Optional CLI, nice-to-have per the migration plan — mirrors `kotoba-lang/plm`'s conservative host-runner pattern |
-| `test/kami_cfd_test.cljc` | `tests/drag.rs` + `tests/drag3d.rs` + `tests/mesh.rs` (36+31+51=118) | 118 -> ~150 | All 8 original `#[test]`s ported 1:1, `clojure.test`, docstring-provenance style |
+| `test/kami_cfd_test.cljk` | `tests/drag.rs` + `tests/drag3d.rs` + `tests/mesh.rs` (36+31+51=118) | 118 -> ~150 | All 8 original `#[test]`s ported 1:1, `clojure.test`, docstring-provenance style |
 
 Total original Rust `src/` + `tests/`: 838 lines. `src/main.rs` was a
 nice-to-have per the migration plan (not required), but was ported anyway
@@ -114,7 +114,7 @@ Interpreted JVM Clojure without hand-unrolled/AOT numeric code is roughly
 Running every original test unchanged (some simulate hundreds of thousands
 of cells for 1000-3000 steps — billions of inner-loop iterations) would
 make a single `clojure -M:test` run take on the order of an hour.
-`test/kami_cfd_test.cljc` ports all 8 original tests with the same physical
+`test/kami_cfd_test.cljk` ports all 8 original tests with the same physical
 assertions, but:
 
 - The 3 ported `tests/drag.rs` (2D) tests keep the original 240x80 grid and
@@ -139,7 +139,7 @@ assertions, but:
   Rust grid sizes (140x64x40) unchanged — voxelisation alone is cheap
   regardless of grid size (milliseconds).
 
-Every reduction is called out inline in `test/kami_cfd_test.cljc`'s
+Every reduction is called out inline in `test/kami_cfd_test.cljk`'s
 docstrings, next to the original Rust value it replaces. No assertion's
 *physics* was weakened — only the resolution/step-count used to
 demonstrate it.
@@ -162,13 +162,13 @@ smoke check.
 
 | path | role |
 |---|---|
-| `src/kami_cfd.cljc` | 2D D2Q9 LBM solver |
-| `src/kami_cfd/mesh.cljc` | Binary STL parser + Ahmed-body generator |
-| `src/kami_cfd/d3.cljc` | 3D D3Q19 + Smagorinsky LES solver |
-| `src/kami_cfd/runner.clj` | Optional JVM CLI |
-| `src/kami_engine/cfd/contract.cljc` | EDN request/result shape validators (pre-existing, unrelated) |
-| `test/kami_cfd_test.cljc` | All 8 original Rust `#[test]`s, ported 1:1 |
-| `test/kami_engine/cfd/contract_test.cljc` | Contract validator tests (pre-existing) |
+| `src/kami_cfd.cljk` | 2D D2Q9 LBM solver |
+| `src/kami_cfd/mesh.cljk` | Binary STL parser + Ahmed-body generator |
+| `src/kami_cfd/d3.cljk` | 3D D3Q19 + Smagorinsky LES solver |
+| `src/kami_cfd/runner.cljk` | Optional JVM CLI |
+| `src/kami_engine/cfd/contract.cljk` | EDN request/result shape validators (pre-existing, unrelated) |
+| `test/kami_cfd_test.cljk` | All 8 original Rust `#[test]`s, ported 1:1 |
+| `test/kami_engine/cfd/contract_test.cljk` | Contract validator tests (pre-existing) |
 | `docs/adr/0001-lbm-solver.md` | Original physics design rationale — still accurate, only the host language changed |
 
 `deps.edn` follows the same `{:paths ["src" "test"] :aliases {:test
@@ -179,7 +179,7 @@ with `cognitect.test-runner`'s auto-discovery of `*-test` namespaces under
 
 ## EDN contract shapes (pre-existing, unrelated to the solver above)
 
-`src/kami_engine/cfd/contract.cljc` validates the request/result EDN shapes
+`src/kami_engine/cfd/contract.cljk` validates the request/result EDN shapes
 a `:lbm` cae-solver method sends/receives — unmodified by this migration.
 Requests describe solver intent:
 
