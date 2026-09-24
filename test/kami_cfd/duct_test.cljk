@@ -12,7 +12,7 @@
   interpreter), so a tight 19-velocity lattice loop is orders of magnitude
   slower there — portable does not mean fast. Numerics belong on a compiled
   host; nbb stays for orchestration."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kami-cfd.duct :as duct]
             [kami-cfd.d3 :as d3]))
 

@@ -26,7 +26,7 @@
   `stl-roundtrips` do no LBM stepping at all, so they keep the ORIGINAL
   Rust grid sizes unchanged (voxelisation alone is cheap regardless of grid
   size)."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kami-cfd :as cfd]
             [kami-cfd.mesh :as mesh]
             [kami-cfd.d3 :as d3]))
