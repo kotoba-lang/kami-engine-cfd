@@ -1,5 +1,5 @@
 (ns kami-engine.cfd.contract-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kami-engine.cfd.contract :as cfd]))
 
 (def ahmed-request
