@@ -10,7 +10,7 @@
 
   Usage: `kbb -M -m kami-cfd.runner [block|teardrop|box3d|fastback3d|ahmed|stl] [re] [steps] [extra]`
   Emits an EDN line the `:lbm` cae-solver method (or a human) can read."
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as io]
             [kami-cfd :as cfd]
             [kami-cfd.d3 :as d3]
             [kami-cfd.mesh :as mesh])
