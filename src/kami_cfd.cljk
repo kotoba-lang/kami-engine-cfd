@@ -1,7 +1,7 @@
 (ns kami-cfd
   "Zero-dep portable CLJC. Migrated in place from the kami-engine-cfd Rust
   crate (`src/lib.rs`, 209 lines) as part of the repo-wide Rust-demotion /
-  clj-wgsl-migration runtime priority (com-junkawasaki/root CLAUDE.md,
+  clj-wgsl-migration runtime priority (com-junkawasaki/root AGENTS.md,
   \".cljc/.kotoba ランタイム優先順位\" section, 2026-07-10 revision;
   ADR-2607010930 \"clj-wgsl migration\" is the precedent this follows, per
   sibling repos `kotoba-lang/mesher`/`pnr`/`rtl`/`ic-packaging`).
