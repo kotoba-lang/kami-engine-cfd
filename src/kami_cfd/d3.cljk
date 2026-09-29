@@ -19,7 +19,7 @@
   chosen deliberately in the original design — but iterates it as a single
   sequential loop instead of splitting across `std::thread::scope` chunks.
   Portability across JVM Clojure / ClojureScript / nbb takes priority over
-  multi-threaded performance per repo policy (CLAUDE.md '.cljc/.kotoba
+  multi-threaded performance per repo policy (AGENTS.md '.cljc/.kotoba
   ランタイム優先順位'); native OS threads have no clean portable equivalent
   across those three hosts. Same result, single-threaded, function names
   keep the `-parallel`-derived Rust names as `collide!`/`stream-drag!` (the

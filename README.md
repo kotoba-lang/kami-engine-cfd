@@ -3,7 +3,7 @@
 Zero-dep portable `.cljc` — a clean-room D2Q9/D3Q19 lattice-Boltzmann (LBM)
 CFD solver, migrated in place from this repo's own Rust crate, per the
 repo-wide Rust-demotion / clj-wgsl-migration runtime priority
-(`com-junkawasaki/root` `CLAUDE.md`, ".cljc/.kotoba ランタイム優先順位"
+(`com-junkawasaki/root` `AGENTS.md`, ".cljc/.kotoba ランタイム優先順位"
 section, 2026-07-10 revision) and following the precedent of
 **ADR-2607010930 "clj-wgsl migration"** (`com-junkawasaki/root`), the same
 migration that produced sibling repos `kotoba-lang/mesher`, `pnr`, `rtl`,

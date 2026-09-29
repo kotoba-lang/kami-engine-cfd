@@ -3,7 +3,7 @@
   the D3Q19 solver (`kami-cfd.d3`), replacing the box/fastback primitives.
   Migrated in place from the kami-engine-cfd Rust crate (`src/mesh.rs`, 65
   lines) as part of the repo-wide Rust-demotion / clj-wgsl-migration runtime
-  priority (com-junkawasaki/root CLAUDE.md, ADR-2607010930) — see the
+  priority (com-junkawasaki/root AGENTS.md, ADR-2607010930) — see the
   `kami-cfd` namespace docstring and this repo's README for full migration
   context. Binary STL parser plus an Ahmed-body generator (the canonical
   automotive CFD validation bluff body: a block with a slanted rear).
